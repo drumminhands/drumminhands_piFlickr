@@ -11,9 +11,9 @@ This requires:
   
 Quick set instructions:
 
-1) Wire the button and LED. Check the wiring by running testcircuit.py
+0) Wire the button and LED. Check the wiring by running testcircuit.py
 
-1) Update the config.py file with your api_key and api_secret. The api_key and api_secret can be obtained from http://www.flickr.com/services/api/keys/
+1) Use the GUI interface, but open the terminal program. Update the config.py file with your api_key and api_secret. The api_key and api_secret can be obtained from http://www.flickr.com/services/api/keys/
 
 2) Run auth.py
 
