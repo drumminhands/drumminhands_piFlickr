@@ -23,7 +23,7 @@ import webbrowser
 led_pin = 11 # LED 1
 button1_pin = 37 # pin for the big red button
 button2_pin = 18 # pin for button to shutdown the pi
-button3_pin = 16 # pin for button to end the program, but not shutdown the pi
+button3_pin = 22 # pin for button to end the program, but not shutdown the pi
 
 total_pics = 1 # number of pics  to be taken
 capture_delay = 0 # delay between pics
