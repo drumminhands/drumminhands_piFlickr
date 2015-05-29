@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # created by chris@drumminhands.com
-# see instructions at http://www.drumminhands.com/2014/06/15/raspberry-pi-photo-booth/
+# see instructions at http://www.drumminhands.com/2015/05/22/raspberry-pi-and-flickr/
 
 import os
 import glob
@@ -21,141 +21,97 @@ from signal import alarm, signal, SIGALRM, SIGKILL
 ########################
 ### Variables Config ###
 ########################
-led_pin = 11 # LED 1
-button1_pin = 37 # pin for the big red button
-button2_pin = 18 # pin for button to shutdown the pi
-button3_pin = 22 # pin for button to end the program, but not shutdown the pi
+ledPin = 11 # LED 1
+btnPin1 = 37 # pin for the big red button
+btnPin2 = 18 # pin for button to shutdown the pi
+btnPin3 = 22 # pin for button to end the program, but not shutdown the pi
 
-total_pics = 1 # number of pics to be taken
-prep_delay = 1 # number of seconds at step 1 as users prep to have photo taken
-replay_delay = 2 # how long to show the image before uploading to flickr?
-done_delay = 6 # how long to hold the done screen before restarting the process
+prepDelay = 1 # number of seconds at step 1 as users prep to have photo taken
+replayDelay = 2 # how long to show the image before uploading to flickr?
+doneDelay = 6 # how long to hold the done screen before restarting the process
 
-test_server = 'www.google.com'
-real_path = os.path.dirname(os.path.realpath(__file__))
+testServer = 'www.google.com'
+realPath = os.path.dirname(os.path.realpath(__file__))
 
 tagsToTag = 'photobooth testing'
 
-monitor_width = 1392;
-monitor_height = 868;
+monitorWidth = 1392;
+monitorHeight = 868;
 
-offset_x = 0 # how far off to left corner to display photos
-offset_y = 0 # how far off to left corner to display photos
+offsetX = 0 # how far off to left corner to display photos
+offsetY = 0 # how far off to left corner to display photos
 
 ####################
 ### Other Config ###
 ####################
 GPIO.setmode(GPIO.BOARD)
-GPIO.setup(led_pin,GPIO.OUT) # LED 1
-GPIO.setup(button1_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP) # falling edge detection on button 1
-GPIO.setup(button2_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP) # falling edge detection on button 2
-GPIO.setup(button3_pin, GPIO.IN, pull_up_down=GPIO.PUD_UP) # falling edge detection on button 3
+GPIO.setup(ledPin,GPIO.OUT) # LED 1
+GPIO.setup(btnPin1, GPIO.IN, pull_up_down=GPIO.PUD_UP) # falling edge detection on button 1
+GPIO.setup(btnPin2, GPIO.IN, pull_up_down=GPIO.PUD_UP) # falling edge detection on button 2
+GPIO.setup(btnPin3, GPIO.IN, pull_up_down=GPIO.PUD_UP) # falling edge detection on button 3
 
 #################
 ### Functions ###
 #################
 
 def cleanup():
-  print('Ended abruptly')
-  GPIO.cleanup()
+	print('Ended abruptly')
+	GPIO.cleanup()
 atexit.register(cleanup)
 
-def shut_it_down(channel):  
-    print "Shutting down..." 
-    GPIO.output(led_pin,True);
-    time.sleep(3)
-    os.system("sudo halt")
+def shutItDown(channel):  
+	print "Shutting down..." 
+	GPIO.output(ledPin,True);
+	time.sleep(3)
+	os.system("sudo halt")
 
-def exit_photobooth(channel):
+def exitApp(channel):
     print "Photo booth app ended. RPi still running" 
-    GPIO.output(led_pin,True);
+    GPIO.output(ledPin,True);
     time.sleep(3)
     sys.exit()
          
-def is_connected():
-  try:
-    # see if we can resolve the host name -- tells us if there is a DNS listening
-    host = socket.gethostbyname(test_server)
-    # connect to the host -- tells us if the host is actually reachable
-    s = socket.create_connection((host, 80), 2)
-    return True
-  except:
-     pass
-  return False    
+def isConnected():
+	try:
+		# see if we can resolve the host name -- tells us if there is a DNS listening
+		host = socket.gethostbyname(testServer)
+		# connect to the host -- tells us if the host is actually reachable
+		s = socket.create_connection((host, 80), 2)
+		return True
+	except:
+		 pass
+	return False    
 
-def init_pygame():
+def initPygame():
     pygame.init()
     size = (pygame.display.Info().current_w, pygame.display.Info().current_h)
     pygame.display.set_caption('Photo Booth Pics')
     pygame.mouse.set_visible(False) #hide the mouse cursor	
     return pygame.display.set_mode(size, pygame.FULLSCREEN)
 
-def show_image(image_path):
-    screen = init_pygame()
-    img=pygame.image.load(image_path) 
-    img = pygame.transform.scale(img,(monitor_width,monitor_height))
-    screen.blit(img,(offset_x,offset_y))
+def showImage(imagePath):
+    screen = initPygame()
+    img=pygame.image.load(imagePath) 
+    img = pygame.transform.scale(img,(monitorWidth,monitorHeight))
+    screen.blit(img,(offsetX,offsetY))
     pygame.display.flip()
 
 def toUnicodeOrBust(obj, encoding='utf-8'):
-  if isinstance(obj, basestring):
-    if not isinstance(obj, unicode):
-      obj = unicode(obj, encoding)
-  return obj
+	  if isinstance(obj, basestring):
+		if not isinstance(obj, unicode):
+			obj = unicode(obj, encoding)
+	  return obj
 
-# define the photo taking function for when the button is pressed 
-def start_photobooth():   
-        
-        #show the instructions
-        GPIO.output(led_pin,False) #turn the light off
-        show_image(real_path + "/slides/intro.png")
-        sleep(prep_delay)#display intro message for a minimum of this many seconds
-        GPIO.output(led_pin,True) #turn the light on
-        while True: #wait for a button press
-            GPIO.wait_for_edge(button1_pin, GPIO.FALLING)
-	    time.sleep(0.2) #debounce
-	    break
-        
-        #get ready to take pics
-	show_image(real_path + "/slides/blank.png")
-	GPIO.output(led_pin,False) #turn the light off
-	
-	#use the 'with' for faster image taking
-	with picamera.PiCamera() as camera:
-	    camera.resolution = (monitor_width, monitor_height)
-	    camera.framerate = 30 #adjusting the framerate affects the preview image quality. Careful.
-	    camera.vflip = True
-            camera.hflip = False
-	    camera.start_preview()
-	    time.sleep(1) #Let the camera warm up
-
-	    #iterate the blink of the light in prep, also gives a little time for the camera to warm up
-	    GPIO.output(led_pin,True); sleep(.25) 
-	    GPIO.output(led_pin,False); sleep(.25)
-            GPIO.output(led_pin,True); sleep(.25)
-
-            #wait for another button press
-	    while True: 
-        	GPIO.wait_for_edge(button1_pin, GPIO.FALLING)
+def waitForBtn(t=0):
+	sleep(t)#wait a minimum of this many seconds
+	GPIO.output(ledPin,True) #turn the light on
+	while True: #wait for a button press
+		GPIO.wait_for_edge(btnPin1, GPIO.FALLING)
 		time.sleep(0.2) #debounce
 		break
-	    
-	    #take one picture 
-	    now = time.strftime("%Y-%m-%d-%H_%M_%S") #get the current date and time for the start of the filename
-            fileToUpload = config.file_path + now + '.jpg'
-	    try: #take the photos                
-		GPIO.output(led_pin,False) #turn off the LED
-		camera.capture(fileToUpload);
-	    finally:
-		camera.stop_preview()				
-		camera.close()
-	
-	#show the image
-	show_image(fileToUpload) #show the one image until flickr upload complete
-	time.sleep(replay_delay) #pause for a minimum amount of time
-	
-	#upload to flickr
-	connected = is_connected() #check to see if you have an internet connection
+
+def uploadToFlickr(file,tag):
+	connected = isConnected() #check to see if you have an internet connection
 	while connected: 
 		try:
 			flickr = flickrapi.FlickrAPI(config.api_key, config.api_secret)
@@ -179,35 +135,80 @@ def start_photobooth():
 
 				# Trade the request token for an access token
 				flickr.get_access_token(verifier)
-			flickr.upload(filename=fileToUpload, tags=tagsToTag)
+			flickr.upload(filename=file, tags=tag)
 			break
 		except ValueError:
 			print "Oops. No internect connection. Upload later."
 			try: #make a text file as a note to upload the .gif later
-				file = open(config.file_path + now + "-FILENOTUPLOADED.txt",'w')   # Trying to create a new file or open one
+				file = open(config.file_path + f + "-FILENOTUPLOADED.txt",'w')   # Trying to create a new file or open one
 				file.close()
 			except:
 				print('Something went wrong. Could not write file.')
-				sys.exit(0) # quit Python
+			sys.exit(0) # quit Python
+
+
+# define the photo taking function for when the button is pressed 
+def startApp():   
+        
+	#show the instructions
+	GPIO.output(ledPin,False) #turn the light off
+	showImage(realPath + "/slides/intro.png")
+	waitForBtn(prepDelay)
+        
+	#get ready to take pics
+	showImage(realPath + "/slides/blank.png")
+	GPIO.output(ledPin,False) #turn the light off
+	with picamera.PiCamera() as camera: #use the 'with' for faster image taking
+		camera.resolution = (monitorWidth, monitorHeight)
+		camera.framerate = 30 #adjusting the framerate affects the preview image quality. Careful.
+		camera.vflip = True
+		camera.hflip = False
+		camera.start_preview()
+		time.sleep(1) #Let the camera warm up
+
+		#iterate the blink of the light in prep, also gives a little time for the camera to warm up
+		GPIO.output(ledPin,True); sleep(.25) 
+		GPIO.output(ledPin,False); sleep(.25)
+		GPIO.output(ledPin,True); sleep(.25)
+
+		waitForBtn(0) #wait for a button press
+	    
+		#take one picture 
+		now = time.strftime("%Y-%m-%d-%H_%M_%S") #get the current date and time for the start of the filename
+		fileToUpload = config.file_path + now + '.jpg'
+		try: #take the photos                
+			GPIO.output(ledPin,False) #turn off the LED
+			camera.capture(fileToUpload);
+		finally:
+			camera.stop_preview()				
+			camera.close()
+	
+	#show the image
+	showImage(fileToUpload) #show the one image until flickr upload complete
+	time.sleep(replayDelay) #pause for a minimum amount of time
+	
+	#upload to flickr
+	uploadToFlickr(fileToUpload,tagsToTag)
+	
 	#display final screen
-        show_image(real_path + "/slides/done.png");
-        time.sleep(done_delay)
+	showImage(realPath + "/slides/done.png");
+	time.sleep(doneDelay)
 
 	#start over
-	GPIO.output(led_pin,True) #turn on the LED
-        show_image(real_path + "/slides/attract.png");
+	GPIO.output(ledPin,True) #turn on the LED
+	showImage(realPath + "/slides/attract.png");
 
 ####################
 ### Main Program ###
 ####################
 
-# when a falling edge is detected on button2_pin and button3_pin, regardless of whatever   
+# when a falling edge is detected on btnPin2 and btnPin3, regardless of whatever   
 # else is happening in the program, their function will be run   
-GPIO.add_event_detect(button2_pin, GPIO.FALLING, callback=shut_it_down, bouncetime=300) 
+GPIO.add_event_detect(btnPin2, GPIO.FALLING, callback=shutItDown, bouncetime=300) 
 
 #choose one of the two following lines to be un-commented
-GPIO.add_event_detect(button3_pin, GPIO.FALLING, callback=exit_photobooth, bouncetime=300) #use third button to exit python. Good while developing
-#GPIO.add_event_detect(button3_pin, GPIO.FALLING, callback=clear_pics, bouncetime=300) #use the third button to clear pics stored on the SD card from previous events
+GPIO.add_event_detect(btnPin3, GPIO.FALLING, callback=exitApp, bouncetime=300) #use third button to exit python. Good while developing
+#GPIO.add_event_detect(btnPin3, GPIO.FALLING, callback=clear_pics, bouncetime=300) #use the third button to clear pics stored on the SD card from previous events
 
 # delete files in folder on startup
 files = glob.glob(config.file_path + '*')
@@ -218,15 +219,15 @@ print "Photo booth app running..."
 #light up the lights to show the app is running
 j = 1
 while j<4:
-  GPIO.output(led_pin,False);
-  time.sleep(0.25) 
-  GPIO.output(led_pin,True);
-  time.sleep(0.25)
-  j+=1
+	GPIO.output(ledPin,False);
+	time.sleep(0.25) 
+	GPIO.output(ledPin,True);
+	time.sleep(0.25)
+	j+=1
 
-show_image(real_path + "/slides/attract.png");
+showImage(realPath + "/slides/attract.png");
 
 while True:
-        GPIO.wait_for_edge(button1_pin, GPIO.FALLING)
+	GPIO.wait_for_edge(btnPin1, GPIO.FALLING)
 	time.sleep(0.2) #debounce
-	start_photobooth()
+	startApp()
