@@ -27,7 +27,7 @@ button2_pin = 18 # pin for button to shutdown the pi
 button3_pin = 22 # pin for button to end the program, but not shutdown the pi
 
 total_pics = 1 # number of pics to be taken
-prep_delay = 8 # number of seconds at step 1 as users prep to have photo taken
+prep_delay = 1 # number of seconds at step 1 as users prep to have photo taken
 replay_delay = 2 # how long to show the image before uploading to flickr?
 done_delay = 6 # how long to hold the done screen before restarting the process
 
@@ -103,45 +103,56 @@ def toUnicodeOrBust(obj, encoding='utf-8'):
       obj = unicode(obj, encoding)
   return obj
 
-# define the photo taking function for when the big button is pressed 
-def start_photobooth(): 
-	################################# Begin Step 1 ################################# 
-	print "Get Ready" 
+# define the photo taking function for when the button is pressed 
+def start_photobooth():   
+        
+        #show the instructions
+        GPIO.output(led_pin,False) #turn the light off
         show_image(real_path + "/slides/intro.png")
-        sleep(prep_delay)#display intro message for this many seconds
+        sleep(prep_delay)#display intro message for a minimum of this many seconds
+        GPIO.output(led_pin,True) #turn the light on
+        while True: #wait for a button press
+            GPIO.wait_for_edge(button1_pin, GPIO.FALLING)
+	    time.sleep(0.2) #debounce
+	    break
+        
+        #get ready to take pics
 	show_image(real_path + "/slides/blank.png")
+	GPIO.output(led_pin,False) #turn the light off
+	
+	#use the 'with' for faster image taking
+	with picamera.PiCamera() as camera:
+	    camera.resolution = (monitor_width, monitor_height)
+	    camera.framerate = 30 #adjusting the framerate affects the preview image quality. Careful.
+	    camera.vflip = True
+            camera.hflip = False
+	    camera.start_preview()
+	    time.sleep(1) #Let the camera warm up
 
-	camera = picamera.PiCamera()
-	camera.resolution = (monitor_width, monitor_height) #use a smaller size to process faster
-	camera.vflip = True
-	camera.hflip = False
-	#camera.saturation = -100 #uncomment this line if you want grayscale
-	camera.start_preview()
+	    #iterate the blink of the light in prep, also gives a little time for the camera to warm up
+	    GPIO.output(led_pin,True); sleep(.25) 
+	    GPIO.output(led_pin,False); sleep(.25)
+            GPIO.output(led_pin,True); sleep(.25)
 
-	#iterate the blink of the light in prep, also gives a little time for the camera to warm up
-	GPIO.output(led_pin,True); sleep(.5) 
-	GPIO.output(led_pin,False); sleep(.5)
-        GPIO.output(led_pin,True); sleep(.5)
-
-	while True: #wait for another button press
+            #wait for another button press
+	    while True: 
         	GPIO.wait_for_edge(button1_pin, GPIO.FALLING)
 		time.sleep(0.2) #debounce
 		break
-	################################# Begin Step 2 #################################
-	print "Taking pics" 
-	now = time.strftime("%Y-%m-%d-%H_%M_%S") #get the current date and time for the start of the filename
-        fileToUpload = config.file_path + now + '.jpg'
-	try: #take the photos
-                camera.capture(fileToUpload);
+	    
+	    #take one picture 
+	    now = time.strftime("%Y-%m-%d-%H_%M_%S") #get the current date and time for the start of the filename
+            fileToUpload = config.file_path + now + '.jpg'
+	    try: #take the photos                
 		GPIO.output(led_pin,False) #turn off the LED
-		#print(fileToUpload)
-	finally:		
-		#can this go any faster?????????????????				
-		camera.stop_preview()
+		camera.capture(fileToUpload);
+	    finally:
+		camera.stop_preview()				
 		camera.close()
-	########################### Begin Step 3 #################################
+	
+	#show the image
 	show_image(fileToUpload) #show the one image until flickr upload complete
-	time.sleep(replay_delay)
+	time.sleep(replay_delay) #pause for a minimum amount of time
 	
 	#upload to flickr
 	connected = is_connected() #check to see if you have an internet connection
@@ -178,11 +189,12 @@ def start_photobooth():
 			except:
 				print('Something went wrong. Could not write file.')
 				sys.exit(0) # quit Python
-	########################### Begin Step 4 #################################	
-	print "Done"
-	GPIO.output(led_pin,True) #turn on the LED
+	#display final screen
         show_image(real_path + "/slides/done.png");
         time.sleep(done_delay)
+
+	#start over
+	GPIO.output(led_pin,True) #turn on the LED
         show_image(real_path + "/slides/attract.png");
 
 ####################
