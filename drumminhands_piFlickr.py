@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # created by chris@drumminhands.com
-# see instructions for tumblr version at http://www.drumminhands.com/2014/06/15/raspberry-pi-photo-booth/
+# see instructions at http://www.drumminhands.com/2014/06/15/raspberry-pi-photo-booth/
 
 import os
 import glob
@@ -16,6 +16,7 @@ import pygame
 import config
 import flickrapi
 import webbrowser
+from signal import alarm, signal, SIGALRM, SIGKILL
 
 ########################
 ### Variables Config ###
@@ -25,22 +26,21 @@ button1_pin = 37 # pin for the big red button
 button2_pin = 18 # pin for button to shutdown the pi
 button3_pin = 22 # pin for button to end the program, but not shutdown the pi
 
-total_pics = 1 # number of pics  to be taken
-capture_delay = 0 # delay between pics
-prep_delay = 3 # number of seconds at step 1 as users prep to have photo taken
-gif_delay = 50 # How much time between frames in the animated gif
+total_pics = 1 # number of pics to be taken
+prep_delay = 8 # number of seconds at step 1 as users prep to have photo taken
+replay_delay = 2 # how long to show the image before uploading to flickr?
+done_delay = 6 # how long to hold the done screen before restarting the process
 
 test_server = 'www.google.com'
 real_path = os.path.dirname(os.path.realpath(__file__))
 
 tagsToTag = 'photobooth testing'
 
-transform_x = 1872 # how wide to scale the jpg when replaying
-transfrom_y = 1168 # how high to scale the jpg when replaying
+monitor_width = 1392;
+monitor_height = 868;
+
 offset_x = 0 # how far off to left corner to display photos
 offset_y = 0 # how far off to left corner to display photos
-replay_delay = 1 # how much to wait in-between showing pics on-screen after taking
-replay_cycles = 1 # how many times to show each photo on-screen after taking
 
 ####################
 ### Other Config ###
@@ -71,19 +71,7 @@ def exit_photobooth(channel):
     GPIO.output(led_pin,True);
     time.sleep(3)
     sys.exit()
-    
-def clear_pics(foo): #why is this function being passed an arguments?
-    #delete files in folder on startup
-	files = glob.glob(config.file_path + '*')
-	for f in files:
-		os.remove(f) 
-	#light the lights in series to show completed
-	print "Deleted previous pics"
-	GPIO.output(led_pin,True); 
-	sleep(0.25)
-	GPIO.output(led_pin,False);
-	sleep(0.25)
-      
+         
 def is_connected():
   try:
     # see if we can resolve the host name -- tells us if there is a DNS listening
@@ -105,31 +93,9 @@ def init_pygame():
 def show_image(image_path):
     screen = init_pygame()
     img=pygame.image.load(image_path) 
-    img = pygame.transform.scale(img,(transform_x,transfrom_y))
+    img = pygame.transform.scale(img,(monitor_width,monitor_height))
     screen.blit(img,(offset_x,offset_y))
     pygame.display.flip()
-
-def display_pics(jpg_group):
-    # this section is an unbelievable nasty hack - for some reason Pygame
-    # needs a keyboardinterrupt to initialise in some limited circs (second time running)
-
-    class Alarm(Exception):
-        pass
-    def alarm_handler(signum, frame):
-        raise Alarm
-    signal(SIGALRM, alarm_handler)
-    alarm(3)
-    try:
-        screen = init_pygame()
-
-        alarm(0)
-    except Alarm:
-        raise KeyboardInterrupt
-    for i in range(0, replay_cycles): #show pics a few times
-		for i in range(1, total_pics+1): #show each pic
-			filename = config.file_path + jpg_group + ".jpg"
-                        show_image(filename);
-			time.sleep(replay_delay) # pause 
 
 def toUnicodeOrBust(obj, encoding='utf-8'):
   if isinstance(obj, basestring):
@@ -142,14 +108,14 @@ def start_photobooth():
 	################################# Begin Step 1 ################################# 
 	print "Get Ready" 
         show_image(real_path + "/slides/intro.png")
-        sleep(4)#display intro message for this many seconds
+        sleep(prep_delay)#display intro message for this many seconds
 	show_image(real_path + "/slides/blank.png")
 
 	camera = picamera.PiCamera()
-	#camera.resolution = (640, 480) #use a smaller size to process faster, and tumblr will only take up to 500 pixels wide for animated gifs
-	camera.vflip = False
+	camera.resolution = (monitor_width, monitor_height) #use a smaller size to process faster
+	camera.vflip = True
 	camera.hflip = False
-	#camera.saturation = -100
+	#camera.saturation = -100 #uncomment this line if you want grayscale
 	camera.start_preview()
 
 	#iterate the blink of the light in prep, also gives a little time for the camera to warm up
@@ -168,16 +134,16 @@ def start_photobooth():
 	try: #take the photos
                 camera.capture(fileToUpload);
 		GPIO.output(led_pin,False) #turn off the LED
-		print(fileToUpload)
-		sleep(capture_delay) # pause in-between shots
+		#print(fileToUpload)
 	finally:		
+		#can this go any faster?????????????????				
 		camera.stop_preview()
 		camera.close()
 	########################### Begin Step 3 #################################
-        show_image(real_path + "/slides/uploading.png")
-
-	print "Uploading to Flickr."
-
+	show_image(fileToUpload) #show the one image until flickr upload complete
+	time.sleep(replay_delay)
+	
+	#upload to flickr
 	connected = is_connected() #check to see if you have an internet connection
 	while connected: 
 		try:
@@ -213,16 +179,10 @@ def start_photobooth():
 				print('Something went wrong. Could not write file.')
 				sys.exit(0) # quit Python
 	########################### Begin Step 4 #################################	
-	try:
-		display_pics(now)
-	except Exception, e:
-		tb = sys.exc_info()[2]
-		traceback.print_exception(e.__class__, e, tb)
-	pygame.quit()
 	print "Done"
 	GPIO.output(led_pin,True) #turn on the LED
         show_image(real_path + "/slides/done.png");
-        time.sleep(5)
+        time.sleep(done_delay)
         show_image(real_path + "/slides/attract.png");
 
 ####################
